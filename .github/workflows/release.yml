@@ -1,0 +1,104 @@
+name: Publish soundfont releases
+
+on:
+  push:
+    tags:
+      - "*-v*"
+  workflow_dispatch:
+    inputs:
+      pack:
+        description: Pack name to release (e.g., FluidR3_GM or SalC5Light2)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fluidsynth lame
+
+      - name: Resolve pack
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PACK: ${{ inputs.pack }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            PACK="$INPUT_PACK"
+          else
+            # Match the tag against each pack's canonical <name-lowercase>-v<version>
+            # tag (common.mjs releaseTag) instead of splitting the tag string, since
+            # pack names in soundfonts.json are not lowercase (e.g. "FluidR3_GM").
+            PACK=$(RELEASE_TAG="$RELEASE_TAG" bun -e "
+              const { loadAllPacks, releaseTag } = await import('./scripts/common.mjs');
+              const tag = process.env.RELEASE_TAG;
+              const pack = (await loadAllPacks()).find((p) => releaseTag(p) === tag);
+              if (!pack) {
+                console.error(\`Cannot determine pack from tag \${tag}\`);
+                process.exit(1);
+              }
+              console.log(pack.name);
+            ")
+          fi
+          echo "pack=$PACK" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release tag
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          PACK: ${{ steps.resolve.outputs.pack }}
+        run: |
+          EXPECTED_TAG=$(PACK="$PACK" bun -e "
+            const { loadPack, releaseTag } = await import('./scripts/common.mjs');
+            console.log(releaseTag(await loadPack(process.env.PACK)));
+          ")
+          test "$RELEASE_TAG" = "$EXPECTED_TAG" || {
+            echo "Expected tag $EXPECTED_TAG, received $RELEASE_TAG" >&2
+            exit 1
+          }
+
+      - run: bun test
+
+      - name: Fetch SF2 source
+        run: bun run fetch -- --pack "${{ steps.resolve.outputs.pack }}"
+
+      - name: Generate MIDI.js files
+        run: bun run generate -- --pack "${{ steps.resolve.outputs.pack }}"
+
+      - run: bun run verify -- --pack "${{ steps.resolve.outputs.pack }}"
+      - run: bun run package -- --pack "${{ steps.resolve.outputs.pack }}"
+
+      - name: Verify release checksums
+        working-directory: dist
+        env:
+          PACK: ${{ steps.resolve.outputs.pack }}
+        run: sha256sum --check "${PACK}-SHA256SUMS"
+
+      - name: Publish immutable versioned assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          PACK: ${{ steps.resolve.outputs.pack }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 && {
+            echo "Release $RELEASE_TAG already exists; publish a new version instead." >&2
+            exit 1
+          }
+          VERSION=$(bun -e "const s = require('fs').readFileSync('soundfonts.json','utf8'); console.log(JSON.parse(s).packs['$PACK'].version)")
+          gh release create "$RELEASE_TAG" dist/* \
+            --verify-tag \
+            --title "$PACK v${VERSION}" \
+            --notes "Reproducible MIDI.js MP3 rendering of $PACK (${VERSION}). See the attached license notice and manifest for provenance and checksums."
