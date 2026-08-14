@@ -1,0 +1,19 @@
+{
+  "name": "@sightread/soundfonts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reproducible packaging and release tooling for Sightread soundfonts",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "fetch": "node scripts/fetch-fluidr3.mjs",
+    "verify": "node scripts/verify.mjs",
+    "package": "node scripts/package.mjs",
+    "build": "npm run fetch && npm run verify && npm run package",
+    "clean": "node scripts/clean.mjs",
+    "test": "node --test"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,71 @@
+name: Publish soundfont release
+
+on:
+  push:
+    tags:
+      - "fluidr3-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing fluidr3-v<version> tag to release
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          PUSHED_REF: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$PUSHED_REF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify release tag
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          EXPECTED_TAG="fluidr3-v$(node -p "JSON.parse(require('fs').readFileSync('soundfonts.json')).packs.FluidR3_GM.version")"
+          test "$RELEASE_TAG" = "$EXPECTED_TAG" || {
+            echo "Expected tag $EXPECTED_TAG, received $RELEASE_TAG" >&2
+            exit 1
+          }
+
+      - run: npm test
+      - run: npm run build
+
+      - name: Verify release checksums
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+
+      - name: Publish immutable versioned assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 && {
+            echo "Release $RELEASE_TAG already exists; publish a new version instead." >&2
+            exit 1
+          }
+          gh release create "$RELEASE_TAG" dist/* \
+            --verify-tag \
+            --title "FluidR3_GM ${RELEASE_TAG#fluidr3-v}" \
+            --notes "Pinned, verified MIDI.js MP3 rendering of FluidR3_GM. See the attached license notice and manifest for provenance and checksums."
