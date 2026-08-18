@@ -4,16 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Reproducible packaging and release tooling for Sightread soundfonts",
-  "engines": {
-    "node": ">=20"
-  },
   "scripts": {
-    "fetch": "node scripts/fetch-fluidr3.mjs",
-    "verify": "node scripts/verify.mjs",
-    "package": "node scripts/package.mjs",
-    "build": "npm run fetch && npm run verify && npm run package",
-    "clean": "node scripts/clean.mjs",
-    "test": "node --test"
+    "fetch": "bun scripts/fetch-fluidr3.mjs",
+    "verify": "bun scripts/verify.mjs",
+    "package": "bun scripts/package.mjs",
+    "build": "bun run fetch && bun run verify && bun run package",
+    "clean": "bun scripts/clean.mjs",
+    "test": "bun test"
   },
   "license": "MIT"
 }

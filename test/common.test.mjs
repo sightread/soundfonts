@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, it, expect } from "bun:test";
 
 import {
   archiveName,
@@ -9,29 +8,41 @@ import {
   releaseTag,
 } from "../scripts/common.mjs";
 
-test("the source is pinned to an immutable commit", async () => {
-  const pack = await loadPack();
-  assert.match(pack.upstream.commit, /^[0-9a-f]{40}$/);
-  assert.equal(pack.upstream.path, "FluidR3_GM");
-  assert.equal(pack.expectedInstrumentCount, 129);
-  assert.match(pack.sourceOverrides.percussion.commit, /^[0-9a-f]{40}$/);
-  const inventory = await loadInstrumentInventory(pack);
-  assert.equal(inventory.length, 129);
-  assert.equal(inventory[0], "acoustic_grand_piano");
-  assert.equal(inventory.at(-1), "percussion");
+describe("the source is pinned to an immutable commit", () => {
+  it("has valid upstream commit and inventory", async () => {
+    const pack = await loadPack();
+    expect(pack.upstream.commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(pack.upstream.path).toBe("FluidR3_GM");
+    expect(pack.expectedInstrumentCount).toBe(129);
+    expect(pack.sourceOverrides.percussion.commit).toMatch(/^[0-9a-f]{40}$/);
+    const inventory = await loadInstrumentInventory(pack);
+    expect(inventory.length).toBe(129);
+    expect(inventory[0]).toBe("acoustic_grand_piano");
+    expect(inventory.at(-1)).toBe("percussion");
+  });
 });
 
-test("instrument lists are normalized and validated", () => {
-  assert.deepEqual(parseInstrumentList("piano\r\npercussion\n\n"), [
-    "piano",
-    "percussion",
-  ]);
-  assert.throws(() => parseInstrumentList("piano\npiano\n"), /duplicate/);
-  assert.throws(() => parseInstrumentList("../piano\n"), /Unsafe/);
+describe("instrument lists are normalized and validated", () => {
+  it("trims and splits correctly", () => {
+    expect(parseInstrumentList("piano\r\npercussion\n\n")).toEqual([
+      "piano",
+      "percussion",
+    ]);
+  });
+
+  it("rejects duplicates", () => {
+    expect(() => parseInstrumentList("piano\npiano\n")).toThrow(/duplicate/);
+  });
+
+  it("rejects path traversal", () => {
+    expect(() => parseInstrumentList("../piano\n")).toThrow(/Unsafe/);
+  });
 });
 
-test("release names are derived from the configured version", async () => {
-  const pack = await loadPack();
-  assert.equal(releaseTag(pack), "fluidr3-v1.0.0");
-  assert.equal(archiveName(pack), "FluidR3_GM-mp3-js-v1.0.0.tar.gz");
+describe("release names are derived from the configured version", () => {
+  it("returns correct tag and archive name", async () => {
+    const pack = await loadPack();
+    expect(releaseTag(pack)).toBe("fluidr3-v1.0.0");
+    expect(archiveName(pack)).toBe("FluidR3_GM-mp3-js-v1.0.0.tar.gz");
+  });
 });

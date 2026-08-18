@@ -1,8 +1,8 @@
 # Sightread soundfonts
 
 Reproducible packaging and release tooling for the soundfonts used by
-Sightread. Generated audio assets are published as GitHub Release assets rather
-than committed to Git history.
+Sightread. Generated audio assets are published as GitHub Release assets. In the
+past, we had it in the Git repo, but Git isn't meant for large file storage.
 
 ## What belongs in this repository
 
@@ -17,14 +17,12 @@ source and percussion override are pinned to immutable commits in
 
 ## Requirements
 
-- Node.js 20 or newer
-
-There are no npm dependencies.
+Bun 1.0 or newer
 
 ## Build a release locally
 
 ```sh
-npm run build
+bun run build
 ```
 
 This performs three operations:
@@ -38,21 +36,21 @@ This performs three operations:
 If a verified local copy already exists, fetching is skipped. To replace it:
 
 ```sh
-npm run fetch -- --force
+bun run fetch -- --force
 ```
 
 For an offline or migration build, copy from an existing directory:
 
 ```sh
-npm run fetch -- --source-dir /path/to/FluidR3_GM
+bun run fetch -- --source-dir /path/to/FluidR3_GM
 ```
 
-Remove generated files with `npm run clean`.
+Remove generated files with `bun run clean`.
 
 ## Publish a release
 
 1. Update the pack version and upstream pin in `soundfonts.json`.
-2. Run `npm test` and `npm run build` locally.
+2. Run `bun test` and `bun run build` locally.
 3. Commit the metadata and tag it as `fluidr3-v<version>`, for example
    `fluidr3-v1.0.0`.
 4. Push the tag.
@@ -64,10 +62,11 @@ GitHub Release containing everything in `dist/`.
 Published assets are immutable by convention: never replace an asset on an
 existing tag. Publish a new version instead.
 
-## Consume from Sightread
+## How to consume in an app
 
-The private application should pin both the release URL and archive checksum.
-Its build downloads and extracts the archive before `react-router build`:
+An application should pin both the release URL and archive checksum. It can then
+download and extract the archive as a preinstall step. For example, run this
+script in order to deposit the soundfonts into the `./public/soundfonts` directory.
 
 ```sh
 curl --fail --location --retry 3 \
@@ -80,11 +79,6 @@ tar -xzf /tmp/FluidR3_GM.tar.gz -C public/soundfonts
 
 `PINNED_SOUNDFONT_SHA256` should be copied from that release's `SHA256SUMS`
 into the private application's own versioned configuration.
-
-The deployed application can continue serving
-`/soundfonts/FluidR3_GM/<instrument>-mp3.js` from its own origin. A PWA service
-worker can precache piano and percussion and runtime-cache other instruments
-without changing the release layout.
 
 ## Adding another soundfont
 

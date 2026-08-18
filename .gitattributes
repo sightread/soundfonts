@@ -4,4 +4,5 @@
 *.mjs text eol=lf
 *.yml text eol=lf
 *.gz binary
+bun.lockb binary
 
