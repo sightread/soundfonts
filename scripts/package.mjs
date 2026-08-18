@@ -18,11 +18,11 @@ import process from "node:process";
 import {
   archiveName,
   distDir,
-  loadPack,
+  loadAllPacks,
   rootDir,
   sha256,
   vendorDir,
-  verifyFluidR3,
+  verifyPack,
 } from "./common.mjs";
 
 function writeTarString(header, offset, length, value) {
@@ -51,7 +51,12 @@ function tarHeader(name, size) {
   writeTarString(header, 263, 2, "00");
 
   const checksum = header.reduce((total, byte) => total + byte, 0);
-  writeTarString(header, 148, 8, `${checksum.toString(8).padStart(6, "0")}\0 `);
+  writeTarString(
+    header,
+    148,
+    8,
+    `${checksum.toString(8).padStart(6, "0")}\0 `,
+  );
   return header;
 }
 
@@ -82,51 +87,68 @@ async function* tarContents(sourceDirectory, rootName) {
 
 async function createDeterministicArchive(sourceDirectory, archive) {
   await pipeline(
-    Readable.from(tarContents(sourceDirectory, path.basename(sourceDirectory))),
+    Readable.from(
+      tarContents(sourceDirectory, path.basename(sourceDirectory)),
+    ),
     createGzip({ level: 9, mtime: 0 }),
     createWriteStream(archive, { flags: "wx" }),
   );
 }
 
 async function main() {
-  const pack = await loadPack();
-  const manifest = await verifyFluidR3();
-  const stagingRoot = path.join(distDir, `.stage-${process.pid}`);
-  const stagingPack = path.join(stagingRoot, "FluidR3_GM");
-
+  const packs = await loadAllPacks();
   await rm(distDir, { recursive: true, force: true });
-  await mkdir(stagingPack, { recursive: true });
+  await mkdir(distDir, { recursive: true });
 
-  try {
-    await cp(path.join(vendorDir, "FluidR3_GM"), stagingPack, {
-      recursive: true,
-    });
-    await copyFile(
-      path.join(rootDir, "THIRD_PARTY_LICENSES", "FluidR3_GM.md"),
-      path.join(stagingPack, "LICENSE.md"),
-    );
-    await writeFile(
-      path.join(stagingPack, "MANIFEST.json"),
-      `${JSON.stringify(manifest, null, 2)}\n`,
-    );
+  for (const pack of packs) {
+    const stagingRoot = path.join(distDir, `.stage-${process.pid}`);
+    const stagingPack = path.join(stagingRoot, pack.name);
 
-    const archive = path.join(distDir, archiveName(pack));
-    const temporaryArchive = `${archive}.tmp`;
-    await createDeterministicArchive(stagingPack, temporaryArchive);
-    await rename(temporaryArchive, archive);
+    await mkdir(stagingPack, { recursive: true });
 
-    const manifestName = `FluidR3_GM-manifest-v${pack.version}.json`;
-    const licenseName = `FluidR3_GM-LICENSE-v${pack.version}.md`;
-    await writeFile(
-      path.join(distDir, manifestName),
-      `${JSON.stringify(manifest, null, 2)}\n`,
-    );
-    await copyFile(
-      path.join(rootDir, "THIRD_PARTY_LICENSES", "FluidR3_GM.md"),
-      path.join(distDir, licenseName),
-    );
+    try {
+      await cp(path.join(vendorDir, pack.name), stagingPack, {
+        recursive: true,
+      });
+      await copyFile(
+        path.join(rootDir, "THIRD_PARTY_LICENSES", `${pack.name}.md`),
+        path.join(stagingPack, "LICENSE.md"),
+      );
 
-    const releaseFiles = [archiveName(pack), licenseName, manifestName].sort();
+      const manifest = await verifyPack(pack.name);
+      await writeFile(
+        path.join(stagingPack, "MANIFEST.json"),
+        `${JSON.stringify(manifest, null, 2)}\n`,
+      );
+
+      const archive = path.join(distDir, archiveName(pack));
+      const temporaryArchive = `${archive}.tmp`;
+      await createDeterministicArchive(stagingPack, temporaryArchive);
+      await rename(temporaryArchive, archive);
+
+      const manifestName = `${pack.name}-manifest-v${pack.version}.json`;
+      const licenseName = `${pack.name}-LICENSE-v${pack.version}.md`;
+      await writeFile(
+        path.join(distDir, manifestName),
+        `${JSON.stringify(manifest, null, 2)}\n`,
+      );
+      await copyFile(
+        path.join(rootDir, "THIRD_PARTY_LICENSES", `${pack.name}.md`),
+        path.join(distDir, licenseName),
+      );
+    } finally {
+      await rm(stagingRoot, { recursive: true, force: true });
+    }
+  }
+
+  // Write per-pack SHA256SUMS files
+  for (const pack of packs) {
+    const releaseFiles = [
+      archiveName(pack),
+      `${pack.name}-LICENSE-v${pack.version}.md`,
+      `${pack.name}-manifest-v${pack.version}.json`,
+    ].sort();
+
     const checksumLines = [];
     for (const filename of releaseFiles) {
       checksumLines.push(
@@ -134,16 +156,15 @@ async function main() {
       );
     }
     await writeFile(
-      path.join(distDir, "SHA256SUMS"),
+      path.join(distDir, `${pack.name}-SHA256SUMS`),
       `${checksumLines.join("\n")}\n`,
     );
 
-    const archiveBytes = stat(archive);
+    const archive = path.join(distDir, archiveName(pack));
+    const archiveStat = await stat(archive);
     console.log(
-      `Packaged ${path.basename(archive)} (${((await archiveBytes).size / 1024 / 1024).toFixed(1)} MiB)`,
+      `Packaged ${path.basename(archive)} (${(archiveStat.size / 1024 / 1024).toFixed(1)} MiB)`,
     );
-  } finally {
-    await rm(stagingRoot, { recursive: true, force: true });
   }
 }
 

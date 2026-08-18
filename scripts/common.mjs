@@ -8,52 +8,52 @@ export const rootDir = fileURLToPath(new URL("../", import.meta.url));
 export const vendorDir = path.join(rootDir, "vendor");
 export const distDir = path.join(rootDir, "dist");
 
-export async function loadPack() {
-  const config = JSON.parse(
+export async function loadConfig() {
+  return JSON.parse(
     await readFile(path.join(rootDir, "soundfonts.json"), "utf8"),
   );
-  const pack = config.packs?.FluidR3_GM;
-  if (config.schemaVersion !== 1 || !pack) {
+}
+
+export async function loadPack(packName) {
+  const config = await loadConfig();
+  if (config.schemaVersion !== 1) {
+    throw new Error("soundfonts.json must have schemaVersion 1");
+  }
+  const pack = config.packs?.[packName];
+  if (!pack) {
+    throw new Error(`Pack "${packName}" not found in soundfonts.json`);
+  }
+  if (!/^https?:\/\//.test(pack.source?.url)) {
+    throw new Error(`Pack "${packName}" source URL must be an HTTP(S) URL`);
+  }
+  if (pack.source.sha256 && !/^[0-9a-f]{64}$/.test(pack.source.sha256)) {
     throw new Error(
-      "soundfonts.json does not define a schema-v1 FluidR3_GM pack",
+      `Pack "${packName}" source SHA-256 must be a lowercase 64-character hex string`,
     );
   }
-  for (const [name, source] of [
-    ["default", pack.upstream],
-    ...Object.entries(pack.sourceOverrides ?? {}),
-  ]) {
-    if (!/^[0-9a-f]{40}$/.test(source.commit)) {
-      throw new Error(
-        `${name} source commit must be a full 40-character Git SHA`,
-      );
-    }
-    if (
-      !/^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(
-        source.repository,
-      )
-    ) {
-      throw new Error(
-        `${name} source must be a canonical GitHub repository URL`,
-      );
-    }
+  if (pack.source.format && pack.source.format !== "sf2") {
+    throw new Error(
+      `Pack "${packName}" source format must be "sf2", got "${pack.source.format}"`,
+    );
   }
-  return pack;
+  return { name: packName, ...pack };
+}
+
+export async function loadAllPacks() {
+  const config = await loadConfig();
+  return Object.entries(config.packs ?? {}).map(([name, pack]) => ({
+    name,
+    ...pack,
+  }));
 }
 
 export async function loadInstrumentInventory(pack) {
-  pack ??= await loadPack();
   const inventory = JSON.parse(
     await readFile(path.join(rootDir, pack.inventory), "utf8"),
   );
   if (!Array.isArray(inventory))
     throw new Error(`${pack.inventory} must contain a JSON array`);
-  const instruments = parseInstrumentList(inventory.join("\n"));
-  if (instruments.length !== pack.expectedInstrumentCount) {
-    throw new Error(
-      `Expected ${pack.expectedInstrumentCount} inventory entries, found ${instruments.length}`,
-    );
-  }
-  return instruments;
+  return parseInstrumentList(inventory.join("\n"));
 }
 
 export function parseInstrumentList(contents) {
@@ -68,7 +68,7 @@ export function parseInstrumentList(contents) {
     }
   }
   if (new Set(names).size !== names.length) {
-    throw new Error("instruments.txt contains duplicate names");
+    throw new Error("instrument list contains duplicate names");
   }
   return names;
 }
@@ -79,10 +79,9 @@ export async function sha256(file) {
   return hash.digest("hex");
 }
 
-export async function verifyFluidR3({
-  directory = path.join(vendorDir, "FluidR3_GM"),
-} = {}) {
-  const pack = await loadPack();
+export async function verifyPack(packName, { directory } = {}) {
+  const pack = await loadPack(packName);
+  directory ??= path.join(vendorDir, packName);
   const instrumentsFile = path.join(directory, "instruments.txt");
   const instruments = parseInstrumentList(
     await readFile(instrumentsFile, "utf8"),
@@ -90,7 +89,7 @@ export async function verifyFluidR3({
   const expectedInstruments = await loadInstrumentInventory(pack);
   if (JSON.stringify(instruments) !== JSON.stringify(expectedInstruments)) {
     throw new Error(
-      "instruments.txt does not match the canonical instrument inventory",
+      `${packName}: instruments.txt does not match the canonical instrument inventory`,
     );
   }
 
@@ -109,7 +108,7 @@ export async function verifyFluidR3({
       (file) => !expectedJsFiles.includes(file),
     );
     throw new Error(
-      `Soundfont inventory mismatch; missing=${missing.join(",") || "none"}; unexpected=${unexpected.join(",") || "none"}`,
+      `${packName}: inventory mismatch; missing=${missing.join(",") || "none"}; unexpected=${unexpected.join(",") || "none"}`,
     );
   }
 
@@ -119,7 +118,7 @@ export async function verifyFluidR3({
     const file = path.join(directory, filename);
     const fileStat = await stat(file);
     if (fileStat.size < 64 * 1024)
-      throw new Error(`${filename} is unexpectedly small`);
+      throw new Error(`${packName}: ${filename} is unexpectedly small`);
 
     const handle = await open(file, "r");
     const headerBuffer = Buffer.alloc(8192);
@@ -133,11 +132,13 @@ export async function verifyFluidR3({
     const header = headerBuffer.subarray(0, bytesRead).toString("utf8");
     if (!header.includes(`MIDI.Soundfont.${name} = {`)) {
       throw new Error(
-        `${filename} does not declare the expected MIDI.Soundfont entry`,
+        `${packName}: ${filename} does not declare the expected MIDI.Soundfont entry`,
       );
     }
     if (!header.includes("data:audio/mp3;base64,")) {
-      throw new Error(`${filename} does not contain MP3 data URLs`);
+      throw new Error(
+        `${packName}: ${filename} does not contain MP3 data URLs`,
+      );
     }
 
     files.push({ filename, bytes: fileStat.size, sha256: await sha256(file) });
@@ -152,14 +153,10 @@ export async function verifyFluidR3({
   files.sort((a, b) => a.filename.localeCompare(b.filename));
 
   return {
-    schemaVersion: 1,
-    id: "FluidR3_GM",
+    id: packName,
     version: pack.version,
     format: pack.format,
-    sources: {
-      default: pack.upstream,
-      overrides: pack.sourceOverrides ?? {},
-    },
+    source: pack.source,
     license: pack.license,
     instrumentCount: instruments.length,
     totalBytes: files.reduce((total, file) => total + file.bytes, 0),
@@ -168,9 +165,9 @@ export async function verifyFluidR3({
 }
 
 export function releaseTag(pack) {
-  return `fluidr3-v${pack.version}`;
+  return `${pack.name.toLowerCase()}-v${pack.version}`;
 }
 
 export function archiveName(pack) {
-  return `FluidR3_GM-mp3-js-v${pack.version}.tar.gz`;
+  return `${pack.name}-mp3-js-v${pack.version}.tar.gz`;
 }

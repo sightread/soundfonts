@@ -4,24 +4,33 @@
     "FluidR3_GM": {
       "version": "1.0.0",
       "format": "midi-js-mp3",
-      "expectedInstrumentCount": 129,
       "inventory": "manifests/FluidR3_GM.instruments.json",
-      "upstream": {
-        "repository": "https://github.com/gleitz/midi-js-soundfonts",
-        "commit": "044fab8e1456bfafc5776e86dfd6bb8697149aef",
-        "path": "FluidR3_GM"
-      },
-      "sourceOverrides": {
-        "percussion": {
-          "repository": "https://github.com/paulrosen/midi-js-soundfonts",
-          "commit": "cbd6b6f6d1af89ebfb69402860741288f08ff8b7",
-          "path": "FluidR3_GM"
-        }
+      "source": {
+        "url": "https://github.com/sightread/soundfonts/releases/download/sources-v1/FluidR3_GM.sf2",
+        "sha256": "74594e8f4250680adf590507a306655a299935343583256f3b722c48a1bc1cb0",
+        "format": "sf2"
       },
       "license": {
         "name": "Creative Commons Attribution 3.0 United States",
         "spdx": "CC-BY-3.0-US",
-        "url": "https://creativecommons.org/licenses/by/3.0/us/"
+        "url": "https://creativecommons.org/licenses/by/3.0/us/",
+        "author": "Frank Wen"
+      }
+    },
+    "SalC5Light2": {
+      "version": "1.0.0",
+      "format": "midi-js-mp3",
+      "inventory": "manifests/SalC5Light2.instruments.json",
+      "source": {
+        "url": "https://github.com/sightread/soundfonts/releases/download/sources-v1/SalC5Light2.sf2",
+        "sha256": "",
+        "format": "sf2"
+      },
+      "license": {
+        "name": "Creative Commons Attribution 3.0 Unported",
+        "spdx": "CC-BY-3.0",
+        "url": "https://creativecommons.org/licenses/by/3.0/",
+        "author": "陈俊豪 (Chen Junhao), based on Salamander Grand Piano by Alexander Holm"
       }
     }
   }

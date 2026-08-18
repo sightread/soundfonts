@@ -5,10 +5,11 @@
   "type": "module",
   "description": "Reproducible packaging and release tooling for Sightread soundfonts",
   "scripts": {
-    "fetch": "bun scripts/fetch-fluidr3.mjs",
+    "fetch": "bun scripts/fetch.mjs",
+    "generate": "bun scripts/generate.mjs",
     "verify": "bun scripts/verify.mjs",
     "package": "bun scripts/package.mjs",
-    "build": "bun run fetch && bun run verify && bun run package",
+    "build": "bun run generate && bun run verify && bun run package",
     "clean": "bun scripts/clean.mjs",
     "test": "bun test"
   },

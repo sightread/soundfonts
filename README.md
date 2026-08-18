@@ -1,23 +1,53 @@
 # Sightread soundfonts
 
 Reproducible packaging and release tooling for the soundfonts used by
-Sightread. Generated audio assets are published as GitHub Release assets. In the
-past, we had it in the Git repo, but Git isn't meant for large file storage.
+Sightread. Generated audio assets are published as GitHub Release assets.
 
-## What belongs in this repository
+## Soundfont packs
 
-Git tracks the download scripts, source pins, integrity metadata, packaging
-workflow, and third-party notices. Downloaded files under `vendor/` and release
-artifacts under `dist/` are intentionally ignored.
-
-The initial pack is FluidR3_GM in MIDI.js MP3/JavaScript format. Its default
-source and percussion override are pinned to immutable commits in
-`soundfonts.json`, and its reviewed instrument inventory is tracked under
-`manifests/`.
+| Pack | Source | License | Instruments |
+|------|--------|---------|-------------|
+| FluidR3_GM | [pianobooster/fluid-soundfont](https://github.com/pianobooster/fluid-soundfont) v3.1 | CC-BY-3.0-US | 129 |
+| SalC5Light2 | [musical-artifacts #6881](https://musical-artifacts.com/artifacts/6881) | CC-BY-3.0 | 1 |
 
 ## Requirements
 
-Bun 1.0 or newer
+- [Bun](https://bun.sh/) 1.0+
+- [FluidSynth](https://www.fluidsynth.org/) (`brew install fluidsynth`)
+- [LAME](https://lame.sourceforge.io/) (`brew install lame`)
+
+## Source releases
+
+SF2 source files are hosted as GitHub Release assets under the `sources-v1`
+tag to avoid depending on external sites. Each pack's `source.url` in
+`soundfonts.json` points to these assets.
+
+| Asset | URL | SHA256 |
+|-------|-----|--------|
+| FluidR3_GM.sf2 | `sources-v1/FluidR3_GM.sf2` | `74594e8f...` |
+| SalC5Light2.sf2 | `sources-v1/SalC5Light2.sf2` | _(pin after upload)_ |
+
+### Creating a source release
+
+1. Download the SF2 files to a local directory.
+2. Create the release:
+   ```sh
+   gh release create sources-v1 \
+     FluidR3_GM.sf2 SalC5Light2.sf2 \
+     --title "SF2 source files" \
+     --notes "Pinned SoundFont 2 source files for the sightread-soundfonts build."
+   ```
+3. Run `bun run fetch --force` to download from the new URLs and verify hashes.
+4. Pin any missing SHA256 values in `soundfonts.json`.
+
+Source releases are immutable: to add or replace SF2 files, create a new tag
+(e.g. `sources-v2`).
+
+## What belongs in this repository
+
+Git tracks the generation scripts, SF2 source pins, instrument inventories,
+packaging workflow, and third-party notices. Downloaded SF2 files under `vendor/`
+and generated artifacts under `dist/` are intentionally ignored.
 
 ## Build a release locally
 
@@ -27,70 +57,78 @@ bun run build
 
 This performs three operations:
 
-1. Downloads every instrument in the reviewed inventory from the pinned
-   upstream commit and generates `instruments.txt`.
+1. Parses each pack's SF2 source file, renders each instrument through
+   FluidSynth + LAME, and generates MIDI.js `.js` files.
 2. Verifies the inventory and file contents, and computes SHA-256 hashes.
 3. Creates a versioned archive, a machine-readable manifest, the third-party
-   notice, and `SHA256SUMS` under `dist/`.
+   notice, and `SHA256SUMS` under `dist/` for each pack.
 
-If a verified local copy already exists, fetching is skipped. To replace it:
+### Individual steps
 
 ```sh
-bun run fetch -- --force
+# Download SF2 source files (skip if already cached)
+bun run fetch
+
+# Generate MIDI.js files from SF2 sources
+bun run generate
+
+# Verify generated files
+bun run verify
+
+# Package into release archives
+bun run package
 ```
 
-For an offline or migration build, copy from an existing directory:
+Options:
 
 ```sh
-bun run fetch -- --source-dir /path/to/FluidR3_GM
+bun run fetch -- --force            # Re-download even if cached
+bun run fetch -- --pack FluidR3_GM  # Fetch only a specific pack
+bun run generate -- --pack SalC5Light2  # Generate only one pack
 ```
 
 Remove generated files with `bun run clean`.
 
 ## Publish a release
 
-1. Update the pack version and upstream pin in `soundfonts.json`.
+1. Update the pack version and source pin in `soundfonts.json`.
 2. Run `bun test` and `bun run build` locally.
-3. Commit the metadata and tag it as `fluidr3-v<version>`, for example
-   `fluidr3-v1.0.0`.
+3. Commit the metadata and tag it as `<pack-lowercase>-v<version>`, e.g.
+   `fluidr3_gm-v1.0.0` or `salc5light2-v1.0.0`.
 4. Push the tag.
 
-The `Publish soundfont release` workflow verifies that the tag matches the
-configured version, rebuilds from the pinned upstream source, and creates a
-GitHub Release containing everything in `dist/`.
+The workflow verifies the tag, rebuilds from the pinned SF2 source, and creates
+a GitHub Release containing the archive, manifest, license, and checksums.
 
 Published assets are immutable by convention: never replace an asset on an
 existing tag. Publish a new version instead.
 
+## Adding another soundfont
+
+1. Obtain a SoundFont 2 (.sf2) file with a compatible license (redistribution
+   and format conversion must be permitted).
+2. Upload the `.sf2` file to a source release (e.g. `sources-v1` or create a
+   new `sources-v2` if needed). Use `gh release upload`.
+3. Create `manifests/<PackName>.instruments.json` listing the instrument names
+   to render (lowercase, underscores, alphanumeric only).
+4. Add the pack to `soundfonts.json` with `source.url` pointing to the
+   `sources-v<N>/<filename>.sf2` asset and `source.sha256` pinned to its hash.
+   Leave `sha256` empty to auto-pin on first fetch.
+5. Add a `THIRD_PARTY_LICENSES/<PackName>.md` with the attribution notice.
+6. Run `bun run fetch`, `bun run generate`, `bun test`, and `bun run build`.
+
 ## How to consume in an app
 
-An application should pin both the release URL and archive checksum. It can then
-download and extract the archive as a preinstall step. For example, run this
-script in order to deposit the soundfonts into the `./public/soundfonts` directory.
+Pin both the release URL and archive checksum. Download and extract as needed:
 
 ```sh
 curl --fail --location --retry 3 \
   --output /tmp/FluidR3_GM.tar.gz \
-  https://github.com/sightread/soundfonts/releases/download/fluidr3-v1.0.0/FluidR3_GM-mp3-js-v1.0.0.tar.gz
+  https://github.com/sightread/soundfonts/releases/download/fluidr3_gm-v1.0.0/FluidR3_GM-mp3-js-v1.0.0.tar.gz
 
-echo "$PINNED_SOUNDFONT_SHA256  /tmp/FluidR3_GM.tar.gz" | shasum -a 256 --check
+echo "$PINNED_SHA256  /tmp/FluidR3_GM.tar.gz" | shasum -a 256 --check
 tar -xzf /tmp/FluidR3_GM.tar.gz -C public/soundfonts
 ```
-
-`PINNED_SOUNDFONT_SHA256` should be copied from that release's `SHA256SUMS`
-into the private application's own versioned configuration.
-
-## Adding another soundfont
-
-Treat each collection as an independently licensed pack:
-
-1. Confirm that redistribution and format conversion are permitted.
-2. Add its source URL, immutable revision, expected inventory, and version to
-   `soundfonts.json`.
-3. Add a pack-specific third-party notice. Do not assume FluidR3_GM's license
-   applies to another collection.
-4. Add a fetcher/verifier or generalize the existing scripts.
-5. Publish it under a distinct tag and artifact name.
 
 ## Licenses
 
