@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packs": {
     "FluidR3_GM": {
-      "version": "1.1.0",
+      "version": "1.2.0",
       "format": "midi-js-mp3",
       "inventory": "manifests/FluidR3_GM.instruments.json",
       "source": {
@@ -18,7 +18,7 @@
       }
     },
     "SalC5Light2": {
-      "version": "1.1.0",
+      "version": "1.2.0",
       "format": "midi-js-mp3",
       "inventory": "manifests/SalC5Light2.instruments.json",
       "source": {
