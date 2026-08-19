@@ -50,7 +50,7 @@ const MIN_NOTE = 24;
 const MAX_NOTE = 95;
 
 const NOTE_NAMES = [
-  "C","C#","D","D#","E","F","F#","G","G#","A","A#","B",
+  "C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B",
 ];
 
 function noteToName(midiNote) {
