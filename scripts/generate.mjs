@@ -45,9 +45,9 @@ const GM_MELODIC_INSTRUMENTS = [
   "seashore","bird_tweet","telephone_ring","helicopter","applause","gunshot",
 ];
 
-// Note range: C1 (24) to B7 (95) — matches the original soundfont_builder.rb
-const MIN_NOTE = 24;
-const MAX_NOTE = 95;
+// Note range: A0 (21) to C8 (108) — matches the original soundfont_builder.rb
+const MIN_NOTE = 21;
+const MAX_NOTE = 108;
 
 const NOTE_NAMES = [
   "C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B",
